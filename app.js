@@ -228,10 +228,11 @@ class ReelGlowRenderer {
         if (growth <= 0.005) return;
 
         // Anchor at bottom-right corner as seen in the Instagram reel
-        const stemBaseX = cw * 0.75;
+        const isMobileScreen = cw < 600;
+        const stemBaseX = isMobileScreen ? cw * 0.72 : cw * 0.75;
         const stemBaseY = ch * 0.95;
-        const stemH = ch * 0.46 * growth;
-        const flowerScale = 1.35 * growth;
+        const stemH = (isMobileScreen ? ch * 0.42 : ch * 0.46) * growth;
+        const flowerScale = (isMobileScreen ? 1.08 : 1.35) * growth;
 
         // Species Color Schemes
         const colorSchemes = {
@@ -559,9 +560,11 @@ class Studio3DRenderer {
 
         const w = window.innerWidth;
         const h = window.innerHeight;
+        const isPortrait = (w / h) < 1.0;
 
         this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-        this.camera.position.set(0, 0.8, 6.8);
+        const initZ = isPortrait ? 6.8 + (1.0 - (w / h)) * 4.6 : 6.8;
+        this.camera.position.set(0, isPortrait ? 0.35 : 0.8, initZ);
 
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
@@ -573,6 +576,19 @@ class Studio3DRenderer {
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.35;
+
+        // Touch & Mouse OrbitControls
+        this.controls = null;
+        if (typeof THREE.OrbitControls !== 'undefined') {
+            this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.06;
+            this.controls.enablePan = false;
+            this.controls.minDistance = 3.5;
+            this.controls.maxDistance = 15.0;
+            this.controls.maxPolarAngle = Math.PI / 2 + 0.35;
+            this.controls.target.set(0, 0.4, 0);
+        }
 
         // Procedural Textures
         this.veinTexture = this.createVeinBumpTexture();
@@ -1115,11 +1131,20 @@ class Studio3DRenderer {
 
     resize(w, h) {
         this.camera.aspect = w / h;
+        const isPortrait = this.camera.aspect < 1.0;
+        if (isPortrait) {
+            // Pull camera back dynamically so the 45-petal rose and stem fit portrait screens comfortably
+            const extraZ = (1.0 - this.camera.aspect) * 4.6;
+            this.camera.position.set(0, 0.35, 6.8 + extraZ);
+        } else {
+            this.camera.position.set(0, 0.8, 6.8);
+        }
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(w, h);
     }
 
     render(bloom, growth, totalWind, time, handTilt = null) {
+        if (this.controls) this.controls.update();
         const totalHeight = 3.6 * growth;
         const pts = this.stemPoints;
         const count = pts.length;
@@ -1265,8 +1290,15 @@ class FlowerBloomApp {
         this.recordCtx = this.recordCanvas.getContext('2d');
         this.recordedBlob = null;
 
-        // Notification Toast
+        // Notification Toast & HUD Elements
         this.saveToast = document.getElementById('save-toast');
+        this.hudCard = document.getElementById('hud-card');
+        this.hudHeader = document.getElementById('hud-header');
+
+        // Collapse HUD on mobile phones by default to preserve maximum view
+        if (window.innerWidth <= 768 && this.hudCard) {
+            this.hudCard.classList.add('collapsed');
+        }
 
         // Init
         this.resize();
@@ -1288,6 +1320,14 @@ class FlowerBloomApp {
     }
 
     initUI() {
+        // Mobile HUD Collapse / Expand Toggle
+        this.hudHeader?.addEventListener('click', () => {
+            if (this.hudCard) {
+                this.hudCard.classList.toggle('collapsed');
+                this.audio.playChime(5, 0.35);
+            }
+        });
+
         // Mode Switcher (Reel Glow vs 3D Studio)
         const btnModeReel = document.getElementById('btn-mode-reel');
         const btnMode3D = document.getElementById('btn-mode-3d');
@@ -1437,13 +1477,15 @@ class FlowerBloomApp {
 
             hands.onResults((res) => this.onHandResults(res));
 
-            // Camera utils feed at 640x480 for smooth 60fps neural net inference
+            // Camera utils feed - optimized for phone screens (facingMode: 'user' for front selfie camera)
+            const isMobile = window.innerWidth < 768;
             const cam = new Camera(this.webcam, {
                 onFrame: async () => {
                     await hands.send({ image: this.webcam });
                 },
-                width: 640,
-                height: 480
+                width: isMobile ? 480 : 640,
+                height: isMobile ? 640 : 480,
+                facingMode: 'user'
             });
 
             cam.start()
@@ -1720,11 +1762,30 @@ class FlowerBloomApp {
 
         const stream = this.recordCanvas.captureStream(30);
 
+        let mimeType = '';
+        const testTypes = [
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm',
+            'video/mp4;codecs=avc1',
+            'video/mp4'
+        ];
+        if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+            for (const t of testTypes) {
+                if (MediaRecorder.isTypeSupported(t)) {
+                    mimeType = t;
+                    break;
+                }
+            }
+        }
+
         try {
-            this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+            this.mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
         } catch (e) {
             this.mediaRecorder = new MediaRecorder(stream);
         }
+
+        const ext = (mimeType && mimeType.includes('mp4')) ? 'mp4' : 'webm';
 
         this.mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) this.recordedChunks.push(e.data);
@@ -1733,14 +1794,14 @@ class FlowerBloomApp {
         this.mediaRecorder.onstop = () => {
             this.isRecording = false;
             this.recordingBadge.classList.add('hidden');
-            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            const blob = new Blob(this.recordedChunks, { type: mimeType || 'video/webm' });
             this.recordedBlob = blob;
 
             // Automatically download clean reaction clip to user's device
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `flower-bloom-${this.currentSpecies}-reaction.webm`;
+            a.download = `flower-bloom-${this.currentSpecies}-reaction.${ext}`;
             document.body.appendChild(a);
             a.click();
             setTimeout(() => {

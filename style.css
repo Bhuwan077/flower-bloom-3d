@@ -209,6 +209,11 @@ html, body {
     color: rgba(255, 210, 235, 0.7);
 }
 
+/* Middle Ribbon Container */
+.controls-ribbon {
+    display: contents;
+}
+
 /* Render Mode Switcher Bar */
 .render-mode-bar {
     display: flex;
@@ -408,6 +413,22 @@ html, body {
     background: rgba(16, 224, 128, 0.15);
     color: #24f090;
     border-color: rgba(16, 224, 128, 0.35);
+}
+
+.hud-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hud-chevron {
+    display: none;
+}
+
+.hud-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .meter-group {
@@ -816,26 +837,247 @@ input[type="range"]::-webkit-slider-thumb {
 /* ==========================================================================
    RESPONSIVE BREAKPOINTS
    ========================================================================== */
-@media (max-width: 960px) {
+/* ==========================================================================
+   RESPONSIVE BREAKPOINTS (Mobile & Tablet First-Class Experience)
+   ========================================================================== */
+@media (max-width: 768px) {
+    /* Header Grid: Brand & Actions on Row 1, Scrollable Ribbon on Row 2 */
     .top-nav {
-        flex-wrap: wrap;
-        top: 10px;
-        left: 10px;
-        right: 10px;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-areas:
+            "brand actions"
+            "ribbon ribbon";
+        gap: 8px;
+        top: max(8px, env(safe-area-inset-top));
+        left: 8px;
+        right: 8px;
+    }
+
+    .brand {
+        grid-area: brand;
+        padding: 6px 12px;
+        gap: 8px;
+        align-self: center;
+    }
+
+    .brand-icon {
+        font-size: 16px;
+    }
+
+    .brand-text .title {
+        font-size: 12px;
+        letter-spacing: 0.3px;
+    }
+
+    .brand-text .subtitle {
+        display: none;
+    }
+
+    .actions-bar {
+        grid-area: actions;
+        justify-content: flex-end;
+        gap: 6px;
+        align-self: center;
+    }
+
+    .icon-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .icon-btn .btn-icon {
+        font-size: 15px;
+    }
+
+    .icon-btn .btn-tooltip {
+        display: none; /* Hide tooltips on mobile touch devices */
+    }
+
+    /* Swipeable Middle Ribbon (Mode & Species) */
+    .controls-ribbon {
+        grid-area: ribbon;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 2px 0;
+    }
+
+    .controls-ribbon::-webkit-scrollbar {
+        display: none;
+    }
+
+    .render-mode-bar, .species-bar {
+        flex-shrink: 0;
+        padding: 3px 6px;
+        gap: 4px;
+    }
+
+    .mode-pill, .species-pill {
+        padding: 5px 10px;
+        font-size: 11px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /* HUD Card (Mobile Floating Collapsible Widget) */
+    .hud-card {
+        top: auto;
+        bottom: max(64px, calc(env(safe-area-inset-bottom) + 54px));
+        right: 8px;
+        left: auto;
+        width: auto;
+        max-width: calc(100vw - 16px);
+        padding: 8px 12px;
+        border-radius: 16px;
+        transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        cursor: pointer;
+    }
+
+    .hud-chevron {
+        display: inline-block;
+        font-size: 11px;
+        transition: transform 0.25s ease;
+        color: rgba(255, 200, 230, 0.8);
+    }
+
+    .hud-header {
+        border-bottom: none;
+        padding-bottom: 0;
         gap: 8px;
     }
-    .render-mode-bar, .species-bar {
-        order: 3;
+
+    /* Collapsed HUD on mobile */
+    .hud-card.collapsed .hud-body {
+        display: none;
     }
-    .hud-card {
-        top: 140px;
+
+    .hud-card.collapsed .hud-chevron {
+        transform: rotate(-90deg);
+    }
+
+    /* Expanded HUD on mobile */
+    .hud-card:not(.collapsed) {
+        width: 260px;
+        padding: 14px;
+        cursor: default;
+    }
+
+    .hud-card:not(.collapsed) .hud-header {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 8px;
+        cursor: pointer;
+    }
+
+    .hud-card:not(.collapsed) .hud-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    /* Instructions Toast (Bottom Safe Area) */
+    .instructions-toast {
+        bottom: max(12px, env(safe-area-inset-bottom));
+        padding: 6px 14px;
+        gap: 6px;
+        font-size: 10.5px;
+        max-width: 95vw;
+        border-radius: 999px;
+    }
+
+    .toast-item {
+        gap: 4px;
+    }
+
+    .hand-tag {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    .action-desc {
+        font-size: 10px;
+    }
+
+    /* Recording Badge */
+    .recording-badge {
+        top: max(88px, calc(env(safe-area-inset-top) + 82px));
+        left: 10px;
+        padding: 6px 12px;
+        font-size: 11px;
+    }
+
+    /* Manual Simulation Panel */
+    .manual-panel {
+        bottom: max(60px, calc(env(safe-area-inset-bottom) + 50px));
+        left: 10px;
         right: 10px;
-        width: 210px;
+        width: auto;
+        max-width: 360px;
+        margin: 0 auto;
+        padding: 14px;
+    }
+
+    /* Clip Saved Toast */
+    .save-toast {
+        top: max(84px, calc(env(safe-area-inset-top) + 78px));
+        width: 90%;
+        max-width: 330px;
+        padding: 10px 18px;
+        font-size: 12px;
+        justify-content: center;
+    }
+
+    /* Loading Overlay */
+    .loading-core {
+        width: 88vw;
+        max-width: 340px;
+        padding: 24px 18px;
+    }
+
+    .loading-heading {
+        font-size: 19px;
+        letter-spacing: 2px;
+    }
+
+    .loading-status {
+        font-size: 12px;
+    }
+
+    .loading-substatus {
+        font-size: 10.5px;
+        margin-bottom: 16px;
+    }
+
+    .btn-start-manual {
+        padding: 8px 18px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 400px) {
+    .brand-text .title {
+        font-size: 11px;
+    }
+    .icon-btn {
+        width: 32px;
+        height: 32px;
+    }
+    .icon-btn .btn-icon {
+        font-size: 13px;
     }
     .instructions-toast {
-        width: 90%;
-        padding: 8px 14px;
-        font-size: 10px;
+        font-size: 9.5px;
+        padding: 5px 10px;
+        gap: 4px;
+    }
+    .hand-tag {
+        font-size: 9px;
+        padding: 1px 4px;
     }
 }
 

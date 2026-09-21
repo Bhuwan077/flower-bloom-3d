@@ -13,7 +13,7 @@
 <body>
     <div class="app-container">
         <!-- 1. Background Layer: Mirrored Live Webcam Feed -->
-        <video id="webcam" autoplay playsinline muted></video>
+        <video id="webcam" autoplay playsinline webkit-playsinline muted></video>
         <div id="cosmic-bg" class="cosmic-bg">
             <div class="stars-layer"></div>
             <div class="nebula-glow"></div>
@@ -41,40 +41,43 @@
                 </div>
             </div>
 
-            <!-- Mode Selector: Reel Glow vs 3D Studio -->
-            <div class="render-mode-bar">
-                <button class="mode-pill active" id="btn-mode-reel" title="Exact glowing multi-branch flower from the viral Instagram reel">
-                    <span class="mode-icon">✨</span>
-                    <span class="mode-name">Reel Glow</span>
-                </button>
-                <button class="mode-pill" id="btn-mode-3d" title="Interactive 3D Three.js mesh models">
-                    <span class="mode-icon">🔮</span>
-                    <span class="mode-name">3D Studio</span>
-                </button>
-            </div>
+            <!-- Middle Ribbon: Mode & Species Bar -->
+            <div class="controls-ribbon">
+                <!-- Mode Selector: Reel Glow vs 3D Studio -->
+                <div class="render-mode-bar">
+                    <button class="mode-pill active" id="btn-mode-reel" title="Exact glowing multi-branch flower from the viral Instagram reel">
+                        <span class="mode-icon">✨</span>
+                        <span class="mode-name">Reel Glow</span>
+                    </button>
+                    <button class="mode-pill" id="btn-mode-3d" title="Interactive 3D Three.js mesh models">
+                        <span class="mode-icon">🔮</span>
+                        <span class="mode-name">3D Studio</span>
+                    </button>
+                </div>
 
-            <!-- Species Selector Tabs -->
-            <div class="species-bar" id="species-bar">
-                <button class="species-pill" data-species="tulip">
-                    <span class="emoji">🌷</span>
-                    <span class="name">Tulip</span>
-                </button>
-                <button class="species-pill active" data-species="rose">
-                    <span class="emoji">🌹</span>
-                    <span class="name">Rose</span>
-                </button>
-                <button class="species-pill" data-species="lotus">
-                    <span class="emoji">🪷</span>
-                    <span class="name">Lotus</span>
-                </button>
-                <button class="species-pill" data-species="sakura">
-                    <span class="emoji">🌸</span>
-                    <span class="name">Sakura</span>
-                </button>
-                <button class="species-pill" data-species="orchid">
-                    <span class="emoji">🌌</span>
-                    <span class="name">Cosmic</span>
-                </button>
+                <!-- Species Selector Tabs -->
+                <div class="species-bar" id="species-bar">
+                    <button class="species-pill" data-species="tulip">
+                        <span class="emoji">🌷</span>
+                        <span class="name">Tulip</span>
+                    </button>
+                    <button class="species-pill active" data-species="rose">
+                        <span class="emoji">🌹</span>
+                        <span class="name">Rose</span>
+                    </button>
+                    <button class="species-pill" data-species="lotus">
+                        <span class="emoji">🪷</span>
+                        <span class="name">Lotus</span>
+                    </button>
+                    <button class="species-pill" data-species="sakura">
+                        <span class="emoji">🌸</span>
+                        <span class="name">Sakura</span>
+                    </button>
+                    <button class="species-pill" data-species="orchid">
+                        <span class="emoji">🌌</span>
+                        <span class="name">Cosmic</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Action Buttons -->
@@ -104,53 +107,58 @@
 
         <!-- 7. Telemetry HUD Card (Right Side) -->
         <aside class="hud-card" id="hud-card">
-            <div class="hud-header">
-                <span class="hud-title">LIVE TELEMETRY</span>
-                <span class="hud-status" id="tracking-status">Searching Hands...</span>
-            </div>
-
-            <div class="meter-group">
-                <div class="meter-label">
-                    <span>Bloom 🤏 (Left Hand)</span>
-                    <span class="meter-val" id="val-bloom">0%</span>
-                </div>
-                <div class="meter-bar-wrap">
-                    <div class="meter-bar fill-bloom" id="bar-bloom"></div>
+            <div class="hud-header" id="hud-header">
+                <span class="hud-title">LIVE HUD</span>
+                <div class="hud-header-right">
+                    <span class="hud-status" id="tracking-status">Searching...</span>
+                    <span class="hud-chevron" id="hud-chevron">▾</span>
                 </div>
             </div>
 
-            <div class="meter-group">
-                <div class="meter-label">
-                    <span>Growth 🌱 (Right Hand)</span>
-                    <span class="meter-val" id="val-growth">0%</span>
+            <div class="hud-body">
+                <div class="meter-group">
+                    <div class="meter-label">
+                        <span>Bloom 🤏 (Left Hand)</span>
+                        <span class="meter-val" id="val-bloom">0%</span>
+                    </div>
+                    <div class="meter-bar-wrap">
+                        <div class="meter-bar fill-bloom" id="bar-bloom"></div>
+                    </div>
                 </div>
-                <div class="meter-bar-wrap">
-                    <div class="meter-bar fill-growth" id="bar-growth"></div>
-                </div>
-            </div>
 
-            <div class="meter-group">
-                <div class="meter-label">
-                    <span>Wind Shear 💨</span>
-                    <span class="meter-val" id="val-wind">0.00</span>
+                <div class="meter-group">
+                    <div class="meter-label">
+                        <span>Growth 🌱 (Right Hand)</span>
+                        <span class="meter-val" id="val-growth">0%</span>
+                    </div>
+                    <div class="meter-bar-wrap">
+                        <div class="meter-bar fill-growth" id="bar-growth"></div>
+                    </div>
                 </div>
-                <div class="meter-bar-wrap">
-                    <div class="meter-bar fill-wind" id="bar-wind"></div>
-                </div>
-            </div>
 
-            <div class="telemetry-grid">
-                <div class="telemetry-box">
-                    <span class="t-label">Mode</span>
-                    <span class="t-val" id="val-mode-display">Reel</span>
+                <div class="meter-group">
+                    <div class="meter-label">
+                        <span>Wind Shear 💨</span>
+                        <span class="meter-val" id="val-wind">0.00</span>
+                    </div>
+                    <div class="meter-bar-wrap">
+                        <div class="meter-bar fill-wind" id="bar-wind"></div>
+                    </div>
                 </div>
-                <div class="telemetry-box">
-                    <span class="t-label">Hands</span>
-                    <span class="t-val" id="val-hands-count">0</span>
-                </div>
-                <div class="telemetry-box">
-                    <span class="t-label">FPS</span>
-                    <span class="t-val" id="val-fps">60</span>
+
+                <div class="telemetry-grid">
+                    <div class="telemetry-box">
+                        <span class="t-label">Mode</span>
+                        <span class="t-val" id="val-mode-display">Reel</span>
+                    </div>
+                    <div class="telemetry-box">
+                        <span class="t-label">Hands</span>
+                        <span class="t-val" id="val-hands-count">0</span>
+                    </div>
+                    <div class="telemetry-box">
+                        <span class="t-label">FPS</span>
+                        <span class="t-val" id="val-fps">60</span>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -190,18 +198,18 @@
         <!-- 10. Interactive Instructions Toast -->
         <div class="instructions-toast" id="instructions-toast">
             <div class="toast-item">
-                <span class="hand-tag left-tag">Left Pinch</span>
-                <span class="action-desc">controls <strong>Bloom</strong></span>
+                <span class="hand-tag left-tag">🤏 Left</span>
+                <span class="action-desc">Bloom</span>
             </div>
             <div class="toast-sep">✦</div>
             <div class="toast-item">
-                <span class="hand-tag right-tag">Right Pinch</span>
-                <span class="action-desc">controls <strong>Growth</strong></span>
+                <span class="hand-tag right-tag">🌱 Right</span>
+                <span class="action-desc">Growth</span>
             </div>
             <div class="toast-sep">✦</div>
             <div class="toast-item">
-                <span class="hand-tag sway-tag">Sway Hands</span>
-                <span class="action-desc">creates <strong>Wind</strong></span>
+                <span class="hand-tag sway-tag">💨 Sway</span>
+                <span class="action-desc">Wind</span>
             </div>
         </div>
 
