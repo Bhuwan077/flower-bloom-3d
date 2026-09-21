@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Flower Bloom 3D — Real-Time 3D Hand Gesture Flower Controller using Three.js and MediaPipe Hands">
+    <title>Flower Bloom 3D — Real-Time Hand Gesture Controller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 1. Background Layer: Video feed OR Cosmic Void -->
+        <video id="webcam" autoplay playsinline muted></video>
+        <div id="cosmic-bg" class="cosmic-bg active">
+            <div class="stars-layer"></div>
+            <div class="nebula-glow"></div>
+        </div>
+
+        <!-- 2. 3D WebGL Canvas for Procedural Flower & Stem -->
+        <canvas id="webgl-canvas"></canvas>
+
+        <!-- 3. 2D HUD Canvas for Hand Skeleton, Laser Calipers & Badges -->
+        <canvas id="hud-canvas"></canvas>
+
+        <!-- 4. Cinematic Vignette & Ambient Glow -->
+        <div class="vignette"></div>
+
+        <!-- 5. Glassmorphic Header & Controls -->
+        <header class="top-nav">
+            <div class="brand">
+                <div class="brand-icon">✿</div>
+                <div class="brand-text">
+                    <span class="title">Flower Bloom <span class="badge-3d">3D</span></span>
+                    <span class="subtitle">MediaPipe × Three.js Gesture Controller</span>
+                </div>
+            </div>
+
+            <!-- Species Selector Tabs -->
+            <div class="species-bar" id="species-bar">
+                <button class="species-pill active" data-species="rose">
+                    <span class="emoji">🌹</span>
+                    <span class="name">Rose</span>
+                </button>
+                <button class="species-pill" data-species="lotus">
+                    <span class="emoji">🪷</span>
+                    <span class="name">Lotus</span>
+                </button>
+                <button class="species-pill" data-species="tulip">
+                    <span class="emoji">🌷</span>
+                    <span class="name">Tulip</span>
+                </button>
+                <button class="species-pill" data-species="sakura">
+                    <span class="emoji">🌸</span>
+                    <span class="name">Sakura</span>
+                </button>
+                <button class="species-pill" data-species="orchid">
+                    <span class="emoji">🌌</span>
+                    <span class="name">Cosmic</span>
+                </button>
+                <button class="species-pill" data-species="sunflower">
+                    <span class="emoji">🌻</span>
+                    <span class="name">Sun</span>
+                </button>
+            </div>
+
+            <!-- Quick Action Buttons -->
+            <div class="actions-bar">
+                <button class="icon-btn" id="btn-bg-toggle" title="Toggle Webcam / Cosmic Void" aria-label="Toggle Background">
+                    <span class="btn-icon">🌌</span>
+                    <span class="btn-tooltip">Background</span>
+                </button>
+                <button class="icon-btn" id="btn-audio-toggle" title="Toggle Harmonious Chimes" aria-label="Toggle Sound">
+                    <span class="btn-icon" id="audio-icon">🔔</span>
+                    <span class="btn-tooltip">Sound Chimes</span>
+                </button>
+                <button class="icon-btn" id="btn-demo-toggle" title="Toggle Manual / Demo Sliders" aria-label="Toggle Demo Controls">
+                    <span class="btn-icon">🎛️</span>
+                    <span class="btn-tooltip">Manual Sliders</span>
+                </button>
+                <button class="icon-btn" id="btn-snapshot" title="Save 3D Flower Photo" aria-label="Capture Snapshot">
+                    <span class="btn-icon">📸</span>
+                    <span class="btn-tooltip">Save Photo</span>
+                </button>
+                <button class="icon-btn" id="btn-help-toggle" title="Gesture Guide" aria-label="Instructions">
+                    <span class="btn-icon">❓</span>
+                    <span class="btn-tooltip">Guide</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- 6. HUD Telemetry Card (Right Side) -->
+        <aside class="hud-card" id="hud-card">
+            <div class="hud-header">
+                <span class="hud-title">3D TELEMETRY</span>
+                <span class="hud-status" id="tracking-status">Searching Hands...</span>
+            </div>
+
+            <div class="meter-group">
+                <div class="meter-label">
+                    <span>Bloom Stage</span>
+                    <span class="meter-val" id="val-bloom">0%</span>
+                </div>
+                <div class="meter-bar-wrap">
+                    <div class="meter-bar fill-bloom" id="bar-bloom"></div>
+                </div>
+            </div>
+
+            <div class="meter-group">
+                <div class="meter-label">
+                    <span>Stem Growth</span>
+                    <span class="meter-val" id="val-growth">0%</span>
+                </div>
+                <div class="meter-bar-wrap">
+                    <div class="meter-bar fill-growth" id="bar-growth"></div>
+                </div>
+            </div>
+
+            <div class="meter-group">
+                <div class="meter-label">
+                    <span>3D Wind Shear</span>
+                    <span class="meter-val" id="val-wind">0.00</span>
+                </div>
+                <div class="meter-bar-wrap">
+                    <div class="meter-bar fill-wind" id="bar-wind"></div>
+                </div>
+            </div>
+
+            <div class="telemetry-grid">
+                <div class="telemetry-box">
+                    <span class="t-label">3D Yaw</span>
+                    <span class="t-val" id="val-yaw">0°</span>
+                </div>
+                <div class="telemetry-box">
+                    <span class="t-label">3D Tilt</span>
+                    <span class="t-val" id="val-tilt">0°</span>
+                </div>
+                <div class="telemetry-box">
+                    <span class="t-label">FPS</span>
+                    <span class="t-val" id="val-fps">60</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 7. Manual / Demo Controls Drawer (Floating) -->
+        <div class="manual-panel hidden" id="manual-panel">
+            <div class="manual-header">
+                <span>🎛️ Manual Simulation Mode</span>
+                <button class="close-btn" id="btn-close-manual">✕</button>
+            </div>
+            <div class="slider-row">
+                <label for="manual-bloom">Bloom 🤏 (Left Hand)</label>
+                <input type="range" id="manual-bloom" min="0" max="1" step="0.01" value="0.75">
+                <span class="slider-num" id="num-bloom">75%</span>
+            </div>
+            <div class="slider-row">
+                <label for="manual-growth">Growth 🌱 (Right Hand)</label>
+                <input type="range" id="manual-growth" min="0" max="1" step="0.01" value="0.85">
+                <span class="slider-num" id="num-growth">85%</span>
+            </div>
+            <div class="slider-row">
+                <label for="manual-wind">Wind Shear 💨</label>
+                <input type="range" id="manual-wind" min="-1" max="1" step="0.01" value="0.1">
+                <span class="slider-num" id="num-wind">0.10</span>
+            </div>
+            <div class="manual-footer">
+                <button class="btn-pill" id="btn-auto-breathe">✨ Auto Breathe Mode: Off</button>
+                <button class="btn-pill" id="btn-reset-cam">🔄 Reset 3D View</button>
+            </div>
+        </div>
+
+        <!-- 8. Interactive Gesture Instructions Pill -->
+        <div class="instructions-toast" id="instructions-toast">
+            <div class="toast-item">
+                <span class="hand-tag left-tag">Left Pinch</span>
+                <span class="action-desc">controls <strong>Bloom</strong></span>
+            </div>
+            <div class="toast-sep">✦</div>
+            <div class="toast-item">
+                <span class="hand-tag right-tag">Right Pinch</span>
+                <span class="action-desc">controls <strong>Growth</strong></span>
+            </div>
+            <div class="toast-sep">✦</div>
+            <div class="toast-item">
+                <span class="hand-tag sway-tag">Sway & Tilt</span>
+                <span class="action-desc">creates <strong>3D Wind & Angle</strong></span>
+            </div>
+        </div>
+
+        <!-- 9. Loading Overlay -->
+        <div class="loading-overlay" id="loading">
+            <div class="loading-core">
+                <div class="spinner-flower">
+                    <span class="petal p1"></span>
+                    <span class="petal p2"></span>
+                    <span class="petal p3"></span>
+                    <span class="petal p4"></span>
+                    <span class="petal p5"></span>
+                    <span class="petal p6"></span>
+                    <span class="center-bulb"></span>
+                </div>
+                <h1 class="loading-heading">FLOWER BLOOM 3D</h1>
+                <p class="loading-status" id="loading-msg">Initializing 3D Botanical Engine & Hand Tracking...</p>
+                <p class="loading-substatus">Please allow camera permissions or click below for interactive mode</p>
+                <button class="btn-start-manual" id="btn-start-manual">Enter Interactive Mode Without Camera</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js (r128) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Three.js OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+
+    <!-- Main Application -->
+    <script src="app.js"></script>
+</body>
+</html>
