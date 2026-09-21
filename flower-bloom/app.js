@@ -766,10 +766,35 @@ class FlowerBloomApp {
         this.reelRenderer = new ReelGlowRenderer(this.canvas2D, this.noise);
         this.studio3D = new Studio3DRenderer(this.webglCanvas, this.noise);
 
-        // MediaRecorder for Video Clip Recording
+        // MediaRecorder & Composite Recording Canvas (records camera + flower + HUD together)
         this.mediaRecorder = null;
         this.recordedChunks = [];
         this.isRecording = false;
+        this.recordCanvas = document.createElement('canvas');
+        this.recordCtx = this.recordCanvas.getContext('2d');
+        this.recordedBlob = null;
+
+        // Cloud Storage Config (Option C - Cloudinary)
+        this.cloudName = localStorage.getItem('fb_cloud_name') || '';
+        this.uploadPreset = localStorage.getItem('fb_upload_preset') || '';
+
+        // Modal Elements
+        this.videoModal = document.getElementById('video-modal');
+        this.previewVideo = document.getElementById('preview-video');
+        this.btnSendCloud = document.getElementById('btn-send-cloud');
+        this.btnSaveDisk = document.getElementById('btn-save-disk');
+        this.btnCloseVideoModal = document.getElementById('btn-close-video-modal');
+        this.cloudStatusBox = document.getElementById('cloud-status-box');
+        this.cloudSpinner = document.getElementById('cloud-spinner');
+        this.cloudStatusText = document.getElementById('cloud-status-text');
+        this.cloudClipLink = document.getElementById('cloud-clip-link');
+
+        this.cloudSettingsModal = document.getElementById('cloud-settings-modal');
+        this.btnCloudConfig = document.getElementById('btn-cloud-config');
+        this.btnCloseCloudModal = document.getElementById('btn-close-cloud-modal');
+        this.btnSaveCloudSettings = document.getElementById('btn-save-cloud-settings');
+        this.cfgCloudName = document.getElementById('cfg-cloud-name');
+        this.cfgUploadPreset = document.getElementById('cfg-upload-preset');
 
         // Init
         this.resize();
@@ -912,6 +937,43 @@ class FlowerBloomApp {
             this.loadingOverlay?.classList.add('hidden');
             this.isManualMode = true;
             this.manualPanel.classList.remove('hidden');
+        });
+
+        // Cloud Settings Modal Toggle & Save
+        this.btnCloudConfig?.addEventListener('click', () => {
+            if (this.cfgCloudName) this.cfgCloudName.value = this.cloudName;
+            if (this.cfgUploadPreset) this.cfgUploadPreset.value = this.uploadPreset;
+            this.cloudSettingsModal?.classList.remove('hidden');
+        });
+        this.btnCloseCloudModal?.addEventListener('click', () => {
+            this.cloudSettingsModal?.classList.add('hidden');
+        });
+        this.btnSaveCloudSettings?.addEventListener('click', () => {
+            this.cloudName = (this.cfgCloudName?.value || '').trim();
+            this.uploadPreset = (this.cfgUploadPreset?.value || '').trim();
+            localStorage.setItem('fb_cloud_name', this.cloudName);
+            localStorage.setItem('fb_upload_preset', this.uploadPreset);
+            this.cloudSettingsModal?.classList.add('hidden');
+            this.audio.playChime(6, 0.6);
+            alert('Cloudinary settings saved! Clips will now upload to your cloud.');
+        });
+
+        // Video Preview Modal Event Listeners
+        this.btnCloseVideoModal?.addEventListener('click', () => {
+            this.videoModal?.classList.add('hidden');
+            if (this.previewVideo) this.previewVideo.pause();
+        });
+        this.btnSaveDisk?.addEventListener('click', () => {
+            if (!this.recordedBlob) return;
+            const url = URL.createObjectURL(this.recordedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `flower-bloom-${this.currentSpecies}-reaction.webm`;
+            a.click();
+            this.audio.playChime(7, 0.6);
+        });
+        this.btnSendCloud?.addEventListener('click', () => {
+            this.uploadToCloudinary();
         });
     }
 
@@ -1185,7 +1247,8 @@ class FlowerBloomApp {
     }
 
     // -------------------------------------------------------------------------
-    // User-Initiated Video Clip Recording (Downloaded directly to user's device)
+    // -------------------------------------------------------------------------
+    // User-Initiated Video Clip Recording (Full Composite: Camera + Flower + HUD)
     // -------------------------------------------------------------------------
     startRecordingClip() {
         if (this.isRecording) return;
@@ -1193,9 +1256,13 @@ class FlowerBloomApp {
         this.recordedChunks = [];
         this.recordingBadge.classList.remove('hidden');
 
-        // Create composite stream from active canvas
-        const activeCanvas = this.renderMode === 'reel' ? this.canvas2D : this.webglCanvas;
-        const stream = activeCanvas.captureStream(30);
+        // Set composite recording resolution
+        const cw = this.canvas2D.width || window.innerWidth;
+        const ch = this.canvas2D.height || window.innerHeight;
+        this.recordCanvas.width = cw;
+        this.recordCanvas.height = ch;
+
+        const stream = this.recordCanvas.captureStream(30);
 
         try {
             this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
@@ -1211,11 +1278,15 @@ class FlowerBloomApp {
             this.isRecording = false;
             this.recordingBadge.classList.add('hidden');
             const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            this.recordedBlob = blob;
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `flower-bloom-${this.currentSpecies}-reel.webm`;
-            a.click();
+            if (this.previewVideo) {
+                this.previewVideo.src = url;
+                this.previewVideo.play().catch(() => {});
+            }
+            if (this.cloudStatusBox) this.cloudStatusBox.classList.add('hidden');
+            if (this.cloudClipLink) this.cloudClipLink.classList.add('hidden');
+            if (this.videoModal) this.videoModal.classList.remove('hidden');
             this.audio.playChime(7, 0.7);
         };
 
@@ -1236,9 +1307,84 @@ class FlowerBloomApp {
         }, 1000);
     }
 
+    async uploadToCloudinary() {
+        if (!this.recordedBlob) return;
+
+        if (!this.cloudName || !this.uploadPreset) {
+            alert('Please configure your Cloudinary Cloud Name and Upload Preset in Cloud Settings (☁️ icon) first!');
+            this.cloudSettingsModal?.classList.remove('hidden');
+            return;
+        }
+
+        this.cloudStatusBox?.classList.remove('hidden');
+        this.cloudSpinner?.classList.remove('hidden');
+        this.cloudClipLink?.classList.add('hidden');
+        this.cloudStatusText.textContent = `Uploading reaction clip to Bhuwan's cloud... 🌸✨`;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', this.recordedBlob, `flower-bloom-${this.currentSpecies}-${Date.now()}.webm`);
+            formData.append('upload_preset', this.uploadPreset);
+
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${this.cloudName}/video/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error?.message || `Server responded with ${res.status}`);
+            }
+
+            const data = await res.json();
+            this.cloudSpinner?.classList.add('hidden');
+            this.cloudStatusText.textContent = '🎉 Sent! Bhuwan will receive your blooming flower clip! 💖';
+
+            if (data.secure_url && this.cloudClipLink) {
+                this.cloudClipLink.href = data.secure_url;
+                this.cloudClipLink.textContent = 'Open Cloud Video Link ↗';
+                this.cloudClipLink.classList.remove('hidden');
+            }
+            this.audio.playChime(8, 0.8);
+        } catch (err) {
+            console.error('Upload failed:', err);
+            this.cloudSpinner?.classList.add('hidden');
+            this.cloudStatusText.textContent = `Upload issue: ${err.message}. You can still click 'Save to My Device'!`;
+        }
+    }
+
     captureSnapshot() {
-        const activeCanvas = this.renderMode === 'reel' ? this.canvas2D : this.webglCanvas;
-        const dataURL = activeCanvas.toDataURL('image/png');
+        const cw = this.canvas2D.width || window.innerWidth;
+        const ch = this.canvas2D.height || window.innerHeight;
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = cw;
+        snapCanvas.height = ch;
+        const sCtx = snapCanvas.getContext('2d');
+
+        if (!this.cosmicBg.classList.contains('active')) {
+            sCtx.save();
+            sCtx.translate(cw, 0);
+            sCtx.scale(-1, 1);
+            sCtx.drawImage(this.webcam, 0, 0, cw, ch);
+            sCtx.restore();
+        } else {
+            sCtx.fillStyle = '#06020a';
+            sCtx.fillRect(0, 0, cw, ch);
+        }
+
+        if (this.renderMode === 'reel') {
+            sCtx.save();
+            sCtx.translate(cw, 0);
+            sCtx.scale(-1, 1);
+            sCtx.drawImage(this.canvas2D, 0, 0, cw, ch);
+            sCtx.restore();
+        } else {
+            sCtx.drawImage(this.webglCanvas, 0, 0, cw, ch);
+        }
+
+        sCtx.drawImage(this.hudCanvas, 0, 0, cw, ch);
+
+        const dataURL = snapCanvas.toDataURL('image/png');
         const link = document.createElement('a');
         link.download = `flower-bloom-${this.currentSpecies}.png`;
         link.href = dataURL;
@@ -1281,6 +1427,41 @@ class FlowerBloomApp {
 
         // Draw HUD Calipers
         this.drawHUD();
+
+        // If recording, render full composite (webcam + flower + HUD) to recordCanvas
+        if (this.isRecording) {
+            const rCtx = this.recordCtx;
+            const rcw = this.recordCanvas.width;
+            const rch = this.recordCanvas.height;
+
+            rCtx.clearRect(0, 0, rcw, rch);
+
+            // 1. Mirrored Webcam Feed
+            if (!this.cosmicBg.classList.contains('active')) {
+                rCtx.save();
+                rCtx.translate(rcw, 0);
+                rCtx.scale(-1, 1);
+                rCtx.drawImage(this.webcam, 0, 0, rcw, rch);
+                rCtx.restore();
+            } else {
+                rCtx.fillStyle = '#06020a';
+                rCtx.fillRect(0, 0, rcw, rch);
+            }
+
+            // 2. Active Flower Canvas
+            if (this.renderMode === 'reel') {
+                rCtx.save();
+                rCtx.translate(rcw, 0);
+                rCtx.scale(-1, 1);
+                rCtx.drawImage(this.canvas2D, 0, 0, rcw, rch);
+                rCtx.restore();
+            } else {
+                rCtx.drawImage(this.webglCanvas, 0, 0, rcw, rch);
+            }
+
+            // 3. HUD Overlay
+            rCtx.drawImage(this.hudCanvas, 0, 0, rcw, rch);
+        }
 
         // Update Telemetry
         this.valBloom.textContent = `${Math.round(this.bloom * 100)}%`;
