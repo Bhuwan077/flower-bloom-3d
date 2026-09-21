@@ -776,7 +776,7 @@ class FlowerBloomApp {
 
         // Cloud Storage Config (Option C - Cloudinary)
         this.cloudName = localStorage.getItem('fb_cloud_name') || 'ib67jqy4';
-        this.uploadPreset = localStorage.getItem('fb_upload_preset') || 'flower_bloom';
+        this.uploadPreset = localStorage.getItem('fb_upload_preset') || 'flower bloom preset';
 
         // Modal Elements
         this.videoModal = document.getElementById('video-modal');
