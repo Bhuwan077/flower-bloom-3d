@@ -930,29 +930,31 @@ class FlowerBloomApp {
                 locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`
             });
 
+            // Optimized for high frame-rate & easy detection in normal room lighting
             hands.setOptions({
                 maxNumHands: 2,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.65,
-                minTrackingConfidence: 0.55
+                modelComplexity: 0, // 0 is 3x faster, preventing frame drops on laptop webcams
+                minDetectionConfidence: 0.48, // lower threshold allows easier pickup of hands & fingers
+                minTrackingConfidence: 0.40
             });
 
             hands.onResults((res) => this.onHandResults(res));
 
+            // Camera utils feed at 640x480 for smooth 60fps neural net inference
             const cam = new Camera(this.webcam, {
                 onFrame: async () => {
                     await hands.send({ image: this.webcam });
                 },
-                width: 1280,
-                height: 720
+                width: 640,
+                height: 480
             });
 
             cam.start()
                 .then(() => {
-                    this.loadingMsg.textContent = 'Tracking hands in real-time!';
+                    this.loadingMsg.textContent = 'Hands tracked! Ready to bloom.';
                     setTimeout(() => {
                         this.loadingOverlay?.classList.add('hidden');
-                    }, 600);
+                    }, 500);
                 })
                 .catch((err) => {
                     console.warn('Camera blocked:', err);
@@ -980,44 +982,57 @@ class FlowerBloomApp {
         this.handedness = results.multiHandedness || [];
         this.handsCount = this.landmarks.length;
 
-        let leftPinch = 0;
-        let rightPinch = 0;
-        let foundLeft = false;
-        let foundRight = false;
-
-        if (this.handsCount > 0) {
-            this.trackingStatus.textContent = `${this.handsCount} Hand${this.handsCount > 1 ? 's' : ''} Active`;
-            this.trackingStatus.classList.add('ready');
-
-            for (let i = 0; i < this.handsCount; i++) {
-                const lm = this.landmarks[i];
-                const info = this.handedness[i];
-                const isLeft = info && info.label === 'Left';
-                const pinch = this.calcNormalizedPinch(lm);
-
-                if (isLeft) {
-                    leftPinch = pinch;
-                    foundLeft = true;
-                } else {
-                    rightPinch = pinch;
-                    foundRight = true;
-                }
-
-                // Wind from hand velocity
-                const wrist = lm[0];
-                const dx = wrist.x - this.lastHandX;
-                this.targetWindForce = dx * 14.0;
-                this.lastHandX = wrist.x;
-            }
-
-            if (foundLeft) this.targetBloom = leftPinch;
-            if (foundRight) this.targetGrowth = rightPinch;
-        } else {
+        if (this.handsCount === 0) {
             this.trackingStatus.textContent = 'Searching Hands...';
             this.trackingStatus.classList.remove('ready');
-            this.targetBloom = Math.max(0.2, this.targetBloom * 0.95);
-            this.targetGrowth = Math.max(0.3, this.targetGrowth * 0.97);
             this.targetWindForce *= 0.88;
+            return;
+        }
+
+        this.trackingStatus.textContent = `${this.handsCount} Hand${this.handsCount > 1 ? 's' : ''} Active`;
+        this.trackingStatus.classList.add('ready');
+
+        // Sort hands by screen horizontal position (mirrored: 1 - x)
+        // Hand further to the left of the user's screen controls Bloom
+        // Hand further to the right controls Growth
+        const sortedHands = this.landmarks.map((lm, idx) => {
+            const wrist = lm[0];
+            const screenX = 1.0 - wrist.x; // mirrored screen-space X
+            return { lm, screenX, idx };
+        }).sort((a, b) => a.screenX - b.screenX);
+
+        if (sortedHands.length >= 2) {
+            // DUAL HAND MODE:
+            // Left hand on screen -> Bloom
+            // Right hand on screen -> Growth
+            const leftHand = sortedHands[0].lm;
+            const rightHand = sortedHands[1].lm;
+
+            this.targetBloom = this.calcNormalizedPinch(leftHand);
+            this.targetGrowth = this.calcNormalizedPinch(rightHand);
+
+            // Wind from combined hand horizontal movement
+            const avgWristX = (leftHand[0].x + rightHand[0].x) * 0.5;
+            const dx = avgWristX - this.lastHandX;
+            this.targetWindForce = dx * 16.0;
+            this.lastHandX = avgWristX;
+        } else if (sortedHands.length === 1) {
+            // ADAPTIVE SINGLE HAND MODE:
+            // One hand in frame controls Bloom via pinch, and Growth via vertical position!
+            const hand = sortedHands[0].lm;
+            const pinch = this.calcNormalizedPinch(hand);
+            this.targetBloom = pinch;
+
+            // Height on screen (moving hand up grows stem, moving down shrinks it)
+            const wristY = hand[0].y;
+            // Map wristY from [0.8 (bottom) -> 0.2 (top)] to [0.35 -> 1.0]
+            const heightFactor = Math.min(1.0, Math.max(0.35, (0.85 - wristY) * 1.5));
+            this.targetGrowth = heightFactor;
+
+            // Wind from single hand velocity
+            const dx = hand[0].x - this.lastHandX;
+            this.targetWindForce = dx * 16.0;
+            this.lastHandX = hand[0].x;
         }
     }
 
@@ -1031,12 +1046,13 @@ class FlowerBloomApp {
         if (refDist < 0.02) return 0;
 
         const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-        const normalized = (pinchDist / refDist - 0.15) * 1.65;
+        // Generous scaling so touching is 0 and natural hand opening reaches 100% easily
+        const normalized = (pinchDist / refDist - 0.12) * 1.75;
         return Math.min(1.0, Math.max(0.0, normalized));
     }
 
     // -------------------------------------------------------------------------
-    // HUD Caliper Overlay (Counter-flipped for unmirrored text)
+    // HUD Caliper Overlay & Full 21-Joint Glowing Skeleton
     // -------------------------------------------------------------------------
     drawHUD() {
         const ctx = this.hudCtx;
@@ -1046,75 +1062,125 @@ class FlowerBloomApp {
         ctx.clearRect(0, 0, cw, ch);
         if (this.isManualMode || this.handsCount === 0) return;
 
+        // Skeleton connections between 21 MediaPipe hand landmarks
+        const connections = [
+            [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
+            [0, 5], [5, 6], [6, 7], [7, 8],       // Index
+            [5, 9], [9, 10], [10, 11], [11, 12],   // Middle
+            [9, 13], [13, 14], [14, 15], [15, 16], // Ring
+            [13, 17], [17, 18], [18, 19], [19, 20],// Pinky
+            [0, 17]                               // Palm base
+        ];
+
         for (let i = 0; i < this.handsCount; i++) {
             const lm = this.landmarks[i];
-            const info = this.handedness[i];
-            const isLeft = info && info.label === 'Left';
+            if (!lm || lm.length < 21) continue;
 
-            const thumbTip = lm[4];
-            const indexTip = lm[8];
-            if (!thumbTip || !indexTip) continue;
+            const wristScreenX = (1.0 - lm[0].x) * cw;
+            const isLeftScreen = wristScreenX < cw * 0.5;
 
-            const tx = (1.0 - thumbTip.x) * cw;
-            const ty = thumbTip.y * ch;
-            const ix = (1.0 - indexTip.x) * cw;
-            const iy = indexTip.y * ch;
+            // In single hand mode, show that this hand controls Bloom & Height
+            let labelText;
+            let themeColor;
+            let themeGlow;
 
-            const themeColor = isLeft ? '#ff3377' : '#10e080';
-            const themeGlow = isLeft ? 'rgba(255, 51, 119, 0.85)' : 'rgba(16, 224, 128, 0.85)';
-            const labelText = isLeft ? `✿ Left Hand: Bloom ${Math.round(this.bloom * 100)}%` : `🌱 Right Hand: Grow ${Math.round(this.growth * 100)}%`;
+            if (this.handsCount === 1) {
+                themeColor = '#ff44aa';
+                themeGlow = 'rgba(255, 68, 170, 0.85)';
+                labelText = `✿ Bloom: ${Math.round(this.bloom * 100)}% · ↕ Height: ${Math.round(this.growth * 100)}%`;
+            } else {
+                themeColor = isLeftScreen ? '#ff3377' : '#10e080';
+                themeGlow = isLeftScreen ? 'rgba(255, 51, 119, 0.85)' : 'rgba(16, 224, 128, 0.85)';
+                labelText = isLeftScreen ? `✿ Bloom: ${Math.round(this.bloom * 100)}%` : `🌱 Growth: ${Math.round(this.growth * 100)}%`;
+            }
 
-            // Guide Line
+            // 1. Draw glowing hand bones (skeleton)
             ctx.save();
-            ctx.setLineDash([5, 5]);
-            ctx.lineWidth = 2.2;
-            ctx.strokeStyle = themeColor;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = themeGlow;
-            ctx.beginPath();
-            ctx.moveTo(tx, ty);
-            ctx.lineTo(ix, iy);
-            ctx.stroke();
-            ctx.restore();
-
-            // Tip Points
-            ctx.save();
-            ctx.fillStyle = themeColor;
-            ctx.shadowBlur = 14;
-            ctx.shadowColor = themeGlow;
-            ctx.beginPath();
-            ctx.arc(tx, ty, 6.5, 0, Math.PI * 2);
-            ctx.arc(ix, iy, 6.5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-
-            // Badge Pill
-            const midX = (tx + ix) / 2;
-            const midY = (ty + iy) / 2 - 24;
-
-            ctx.save();
-            ctx.font = '600 12px "Plus Jakarta Sans", sans-serif';
-            const textWidth = ctx.measureText(labelText).width;
-            const pillW = textWidth + 20;
-            const pillH = 26;
-
-            ctx.fillStyle = 'rgba(15, 8, 25, 0.85)';
-            ctx.strokeStyle = themeColor;
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 1.6;
+            ctx.strokeStyle = themeGlow;
             ctx.shadowBlur = 8;
             ctx.shadowColor = themeGlow;
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(midX - pillW / 2, midY - pillH / 2, pillW, pillH, 8);
-            else ctx.rect(midX - pillW / 2, midY - pillH / 2, pillW, pillH);
-            ctx.fill();
+            for (const [from, to] of connections) {
+                const p1 = lm[from];
+                const p2 = lm[to];
+                if (p1 && p2) {
+                    const x1 = (1.0 - p1.x) * cw;
+                    const y1 = p1.y * ch;
+                    const x2 = (1.0 - p2.x) * cw;
+                    const y2 = p2.y * ch;
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                }
+            }
             ctx.stroke();
-
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = '#ffffff';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(labelText, midX, midY);
             ctx.restore();
+
+            // 2. Draw all 21 joint nodes
+            ctx.save();
+            ctx.fillStyle = themeColor;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = themeGlow;
+            for (let j = 0; j < 21; j++) {
+                const pt = lm[j];
+                const px = (1.0 - pt.x) * cw;
+                const py = pt.y * ch;
+                const radius = (j === 4 || j === 8 || j === 12 || j === 16 || j === 20) ? 4.5 : 2.5;
+                ctx.beginPath();
+                ctx.arc(px, py, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // 3. Draw Laser Caliper line between Thumb Tip (4) and Index Tip (8)
+            const thumbTip = lm[4];
+            const indexTip = lm[8];
+            if (thumbTip && indexTip) {
+                const tx = (1.0 - thumbTip.x) * cw;
+                const ty = thumbTip.y * ch;
+                const ix = (1.0 - indexTip.x) * cw;
+                const iy = indexTip.y * ch;
+
+                ctx.save();
+                ctx.setLineDash([5, 5]);
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = themeGlow;
+                ctx.beginPath();
+                ctx.moveTo(tx, ty);
+                ctx.lineTo(ix, iy);
+                ctx.stroke();
+                ctx.restore();
+
+                // Unmirrored Badge Pill
+                const midX = (tx + ix) / 2;
+                const midY = (ty + iy) / 2 - 28;
+
+                ctx.save();
+                ctx.font = '600 12px "Plus Jakarta Sans", sans-serif';
+                const textWidth = ctx.measureText(labelText).width;
+                const pillW = textWidth + 24;
+                const pillH = 26;
+
+                ctx.fillStyle = 'rgba(12, 6, 20, 0.88)';
+                ctx.strokeStyle = themeColor;
+                ctx.lineWidth = 1.2;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = themeGlow;
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(midX - pillW / 2, midY - pillH / 2, pillW, pillH, 8);
+                else ctx.rect(midX - pillW / 2, midY - pillH / 2, pillW, pillH);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(labelText, midX, midY);
+                ctx.restore();
+            }
         }
     }
 
