@@ -55,11 +55,11 @@
 
             <!-- Species Selector Tabs -->
             <div class="species-bar" id="species-bar">
-                <button class="species-pill active" data-species="tulip">
+                <button class="species-pill" data-species="tulip">
                     <span class="emoji">🌷</span>
                     <span class="name">Tulip</span>
                 </button>
-                <button class="species-pill" data-species="rose">
+                <button class="species-pill active" data-species="rose">
                     <span class="emoji">🌹</span>
                     <span class="name">Rose</span>
                 </button>
@@ -94,10 +94,6 @@
                 <button class="icon-btn" id="btn-demo-toggle" title="Manual Sliders (No Camera Needed)" aria-label="Toggle Demo Controls">
                     <span class="btn-icon">🎛️</span>
                     <span class="btn-tooltip">Manual Sliders</span>
-                </button>
-                <button class="icon-btn" id="btn-cloud-config" title="Configure Cloud Storage (Cloudinary)" aria-label="Cloud Settings">
-                    <span class="btn-icon">☁️</span>
-                    <span class="btn-tooltip">Cloud Settings</span>
                 </button>
                 <button class="icon-btn" id="btn-snapshot" title="Save Photo" aria-label="Capture Snapshot">
                     <span class="btn-icon">📸</span>
@@ -226,66 +222,12 @@
                 <p class="loading-substatus">Please allow camera permissions to control the blooming flower</p>
                 <button class="btn-start-manual" id="btn-start-manual">Enter Interactive Mode Without Camera</button>
             </div>
-        <!-- 12. Video Clip Preview & Send to Bhuwan Modal (Option C) -->
-        <div class="modal-backdrop hidden" id="video-modal">
-            <div class="glass-modal-card">
-                <div class="modal-card-header">
-                    <span class="modal-card-title">🌸 Flower Reaction Clip Ready!</span>
-                    <button class="modal-close-btn" id="btn-close-video-modal">✕</button>
-                </div>
-                <div class="video-preview-wrapper">
-                    <video id="preview-video" autoplay loop muted playsinline></video>
-                </div>
-                <p class="modal-card-desc">Your 10-second blooming reaction clip has been recorded!</p>
-                
-                <div class="modal-btn-row">
-                    <button class="btn-send-cloud" id="btn-send-cloud">
-                        <span class="btn-action-icon">💌</span> Send Clip to Bhuwan
-                    </button>
-                    <button class="btn-save-disk" id="btn-save-disk">
-                        <span class="btn-action-icon">💾</span> Save to My Device
-                    </button>
-                </div>
-
-                <div class="cloud-status-box hidden" id="cloud-status-box">
-                    <div class="cloud-spinner" id="cloud-spinner"></div>
-                    <span class="cloud-status-text" id="cloud-status-text">Uploading clip to Bhuwan's cloud...</span>
-                    <a href="#" target="_blank" class="cloud-clip-link hidden" id="cloud-clip-link">Open Uploaded Video ↗</a>
-                </div>
-            </div>
         </div>
 
-        <!-- 13. Cloud Storage Settings Modal (Cloudinary Unsigned Upload) -->
-        <div class="modal-backdrop hidden" id="cloud-settings-modal">
-            <div class="glass-modal-card">
-                <div class="modal-card-header">
-                    <span class="modal-card-title">☁️ Cloud Storage Setup (Cloudinary)</span>
-                    <button class="modal-close-btn" id="btn-close-cloud-modal">✕</button>
-                </div>
-                <p class="modal-card-desc">When she clicks <strong>"Send Clip to Bhuwan"</strong>, the video will be uploaded directly to your free Cloudinary account so you can see and download it!</p>
-                
-                <div class="settings-field">
-                    <label for="cfg-cloud-name">Cloudinary Cloud Name:</label>
-                    <input type="text" id="cfg-cloud-name" value="ib67jqy4">
-                </div>
-                <div class="settings-field">
-                    <label for="cfg-upload-preset">Upload Preset (Unsigned):</label>
-                    <input type="text" id="cfg-upload-preset" value="flower bloom preset" placeholder="e.g. flower bloom preset">
-                </div>
-
-                <div class="settings-help">
-                    <span>💡 Free Setup (takes 1 min):</span>
-                    <ol>
-                        <li>Sign up free at <a href="https://cloudinary.com" target="_blank" style="color:#ff88bb">cloudinary.com</a>.</li>
-                        <li>Copy your <strong>Cloud Name</strong> from dashboard.</li>
-                        <li>Go to <em>Settings ➔ Upload ➔ Add upload preset</em>, set Signing Mode to <strong>Unsigned</strong>, and save!</li>
-                    </ol>
-                </div>
-
-                <div class="modal-btn-row">
-                    <button class="btn-send-cloud" id="btn-save-cloud-settings">Save Cloud Settings</button>
-                </div>
-            </div>
+        <!-- 12. Reaction Clip Downloaded Toast Notification -->
+        <div class="save-toast hidden" id="save-toast">
+            <span>🌸</span>
+            <span>Video clip saved to your device!</span>
         </div>
     </div>
 

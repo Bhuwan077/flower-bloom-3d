@@ -549,6 +549,7 @@ class ReelGlowRenderer {
 
 // =============================================================================
 // 5. 3D STUDIO RENDERER (Three.js WebGL Engine)
+// 45-Petal Crystal Glass Rose Architecture from Propose-Your-Crush
 // =============================================================================
 class Studio3DRenderer {
     constructor(canvas, noise) {
@@ -560,7 +561,7 @@ class Studio3DRenderer {
         const h = window.innerHeight;
 
         this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-        this.camera.position.set(0, 0.6, 7.2);
+        this.camera.position.set(0, 0.8, 6.8);
 
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
@@ -571,98 +572,542 @@ class Studio3DRenderer {
         this.renderer.setSize(w, h);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.3;
+        this.renderer.toneMappingExposure = 1.35;
 
-        // Lights
-        this.ambientLight = new THREE.AmbientLight(0xffddf0, 0.8);
+        // Procedural Textures
+        this.veinTexture = this.createVeinBumpTexture();
+        this.starTexture = this.createStarTexture();
+
+        // Lighting Rig
+        this.ambientLight = new THREE.AmbientLight(0xffeef6, 0.85);
         this.scene.add(this.ambientLight);
 
-        this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
-        this.sunLight.position.set(4, 8, 6);
+        this.sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
+        this.sunLight.position.set(4, 9, 6);
         this.scene.add(this.sunLight);
 
-        this.rimLight = new THREE.DirectionalLight(0x77bbff, 1.0);
-        this.rimLight.position.set(-5, 4, -4);
+        this.rimLight = new THREE.DirectionalLight(0x70b5ff, 1.2);
+        this.rimLight.position.set(-6, 5, -5);
         this.scene.add(this.rimLight);
 
-        this.coreLight = new THREE.PointLight(0xff3377, 1.5, 6, 2);
-        this.scene.add(this.coreLight);
+        this.innerGlowLight = new THREE.PointLight(0xff2266, 2.0, 7, 1.8);
+        this.scene.add(this.innerGlowLight);
 
+        // Flower & Stem Containers
         this.flowerHeadContainer = new THREE.Group();
         this.scene.add(this.flowerHeadContainer);
 
+        this.dewdropSprites = [];
+        this.petalNodes = [];
+        this.stamenGroup = null;
+
         this.initStem();
-        this.buildSpecies('tulip');
+        this.buildSpecies('rose');
+    }
+
+    createVeinBumpTexture() {
+        const c = document.createElement('canvas');
+        c.width = 256;
+        c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(0, 0, 256, 256);
+
+        ctx.strokeStyle = '#9e9e9e';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(128, 256);
+        ctx.quadraticCurveTo(128, 120, 128, 8);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#8d8d8d';
+        ctx.lineWidth = 1.4;
+        for (let i = 0; i < 16; i++) {
+            const y = 240 - i * 14;
+            const span = (1.0 - y / 256) * 90 + 20;
+            // Left branch
+            ctx.beginPath();
+            ctx.moveTo(128, y);
+            ctx.quadraticCurveTo(128 - span * 0.45, y - 8, 128 - span, y - 24);
+            ctx.stroke();
+            // Right branch
+            ctx.beginPath();
+            ctx.moveTo(128, y);
+            ctx.quadraticCurveTo(128 + span * 0.45, y - 8, 128 + span, y - 24);
+            ctx.stroke();
+        }
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        return tex;
+    }
+
+    createStarTexture() {
+        const c = document.createElement('canvas');
+        c.width = 64;
+        c.height = 64;
+        const ctx = c.getContext('2d');
+        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        grad.addColorStop(0.2, 'rgba(255, 220, 245, 0.85)');
+        grad.addColorStop(0.5, 'rgba(255, 105, 180, 0.35)');
+        grad.addColorStop(1, 'rgba(255, 50, 120, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
+        return new THREE.CanvasTexture(c);
+    }
+
+    createCurvedPetalGeometry(width, height, cupDepth, tipCurl, species = 'rose', segW = 20, segH = 24) {
+        const geom = new THREE.PlaneGeometry(width, height, segW, segH);
+        const pos = geom.attributes.position;
+        const count = pos.count;
+        const colors = new Float32Array(count * 3);
+
+        for (let i = 0; i < count; i++) {
+            let x = pos.getX(i);
+            let y = pos.getY(i);
+            let z = pos.getZ(i);
+
+            // Normalized u in [-1, 1], v in [0, 1]
+            const u = x / (width * 0.5);
+            const uNorm = Math.abs(u);
+            const v = Math.max(0, Math.min(1, (y + height * 0.5) / height));
+
+            // Species-specific contour shape
+            let contour;
+            if (species === 'lotus') {
+                contour = Math.sin(Math.PI * Math.pow(v, 0.85));
+            } else if (species === 'tulip') {
+                contour = Math.sin(Math.PI * Math.pow(v, 0.45));
+            } else if (species === 'sakura') {
+                const notch = (v > 0.88) ? Math.sin(Math.PI * Math.min(1, uNorm * 2.0)) * 0.22 : 0;
+                contour = Math.max(0, Math.sin(Math.PI * Math.pow(v, 0.6)) - notch);
+            } else {
+                // Rose & Cosmic: classic spoon contour
+                contour = Math.sin(Math.PI * Math.pow(v, 0.65));
+            }
+
+            x = x * (0.12 + 0.88 * contour);
+            x *= (1.0 + Math.sin(v * Math.PI) * 0.08);
+
+            // Organic spoon cupping
+            const zCup = -(1.0 - uNorm * uNorm) * cupDepth * Math.sin(Math.PI * Math.min(1.0, v * 1.15));
+
+            // Edge ruffling
+            const edgeDist = Math.pow(uNorm, 1.8);
+            const ruffle = Math.sin(v * 16.0 + u * 8.0) * 0.038 * Math.pow(v, 1.1) * edgeDist;
+
+            // Tip backward curl
+            const zCurl = Math.pow(v, 2.2) * tipCurl;
+
+            z += zCup + ruffle + zCurl;
+
+            // Pivot at base (y=0)
+            pos.setXYZ(i, x, y + height * 0.5, z);
+
+            // Vertex Color Gradient (Gold base -> Deep velvet -> Radiant hotpink -> Frosted crystal rim)
+            let r, g, b;
+            if (species === 'rose') {
+                if (v < 0.15) {
+                    const t = v / 0.15;
+                    // Gold base (#ffd54f) to Velvet ruby (#880e4f)
+                    r = 1.0 - t * 0.47;
+                    g = 0.83 - t * 0.78;
+                    b = 0.31 - t * 0.0;
+                } else if (v < 0.70) {
+                    const t = (v - 0.15) / 0.55;
+                    // Velvet ruby (#880e4f) to Hotpink (#ff4081)
+                    r = 0.53 + t * 0.47;
+                    g = 0.05 + t * 0.20;
+                    b = 0.31 + t * 0.20;
+                } else {
+                    const t = (v - 0.70) / 0.30;
+                    // Hotpink to Frosted crystalline rim (#ffffff)
+                    r = 1.0;
+                    g = 0.25 + t * 0.75;
+                    b = 0.51 + t * 0.49;
+                }
+            } else if (species === 'lotus') {
+                if (v < 0.2) {
+                    r = 1.0; g = 0.88; b = 0.50; // Amber gold
+                } else if (v < 0.75) {
+                    const t = (v - 0.2) / 0.55;
+                    r = 1.0; g = 0.50 + t * 0.25; b = 0.75 + t * 0.15; // Soft lotus pink
+                } else {
+                    r = 1.0; g = 0.95; b = 0.98; // Pure crystal tip
+                }
+            } else if (species === 'tulip') {
+                if (v < 0.25) {
+                    r = 1.0; g = 0.82; b = 0.25;
+                } else if (v < 0.8) {
+                    r = 0.95; g = 0.10; b = 0.35;
+                } else {
+                    r = 1.0; g = 0.45; b = 0.70;
+                }
+            } else if (species === 'sakura') {
+                if (v < 0.3) {
+                    r = 1.0; g = 0.85; b = 0.88;
+                } else {
+                    const t = (v - 0.3) / 0.7;
+                    r = 1.0; g = 0.70 + t * 0.30; b = 0.80 + t * 0.20;
+                }
+            } else {
+                // Cosmic Orchid (Violet -> Electric Magenta -> Cyan edge)
+                if (v < 0.35) {
+                    r = 0.48; g = 0.12; b = 0.75; // Violet
+                } else if (v < 0.8) {
+                    r = 0.92; g = 0.15; b = 0.88; // Neon magenta
+                } else {
+                    r = 0.15; g = 0.95; b = 1.0; // Cyan crystal rim
+                }
+            }
+
+            colors[i * 3] = r;
+            colors[i * 3 + 1] = g;
+            colors[i * 3 + 2] = b;
+        }
+
+        geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geom.computeVertexNormals();
+        return geom;
     }
 
     initStem() {
-        this.stemSegments = 24;
+        this.stemSegments = 26;
         this.stemPoints = [];
-        this.stemBaseY = -2.6;
+        this.stemBaseY = -2.7;
         for (let i = 0; i <= this.stemSegments; i++) {
-            this.stemPoints.push(new THREE.Vector3(0, this.stemBaseY + i * 0.15, 0));
+            this.stemPoints.push(new THREE.Vector3(0, this.stemBaseY + i * 0.16, 0));
         }
         this.stemCurve = new THREE.CatmullRomCurve3(this.stemPoints);
-        this.stemGeom = new THREE.TubeGeometry(this.stemCurve, 36, 0.065, 12, false);
-        this.stemMat = new THREE.MeshStandardMaterial({
-            color: 0x2d8a35,
-            roughness: 0.4,
-            emissive: 0x0f4015,
-            emissiveIntensity: 0.2
+        this.stemGeom = new THREE.TubeGeometry(this.stemCurve, 40, 0.065, 12, false);
+        this.stemMat = new THREE.MeshPhysicalMaterial({
+            color: 0x228b22,
+            roughness: 0.3,
+            transmission: 0.35,
+            clearcoat: 0.8,
+            clearcoatRoughness: 0.15,
+            emissive: 0x093009,
+            emissiveIntensity: 0.25
         });
         this.stemMesh = new THREE.Mesh(this.stemGeom, this.stemMat);
         this.scene.add(this.stemMesh);
+
+        // 3D Leaves attached to stem
+        this.leafGroup1 = this.createStemLeaf(1.1, 0.42, 0.2);
+        this.leafGroup2 = this.createStemLeaf(0.95, 0.36, -0.2);
+        this.scene.add(this.leafGroup1);
+        this.scene.add(this.leafGroup2);
     }
 
-    buildSpecies(species) {
-        while (this.flowerHeadContainer.children.length > 0) {
-            this.flowerHeadContainer.remove(this.flowerHeadContainer.children[0]);
+    createStemLeaf(length, width, side) {
+        const group = new THREE.Group();
+        const geom = new THREE.PlaneGeometry(width, length, 12, 16);
+        const pos = geom.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            let x = pos.getX(i);
+            let y = pos.getY(i);
+            const v = (y + length * 0.5) / length;
+            const contour = Math.sin(Math.PI * Math.pow(v, 0.6));
+            x *= contour;
+            const z = -Math.sin(Math.PI * v) * 0.12 - Math.pow(v, 1.8) * 0.22;
+            pos.setXYZ(i, x, y + length * 0.5, z);
         }
+        geom.computeVertexNormals();
 
-        const root = new THREE.Group();
-        this.petalNodes = [];
-
-        const colors = {
-            tulip: 0xff3366,
-            rose: 0xdd0033,
-            lotus: 0xff88cc,
-            sakura: 0xffb0c8,
-            orchid: 0x00f0ff
-        };
-        const col = colors[species] || 0xff3366;
-        this.coreLight.color.setHex(col);
-
-        const geom = new THREE.CylinderGeometry(0.1, 0.45, 1.1, 16, 1, true);
-        const mat = new THREE.MeshStandardMaterial({
-            color: col,
-            roughness: 0.35,
-            emissive: col,
-            emissiveIntensity: 0.3,
+        const mat = new THREE.MeshPhysicalMaterial({
+            color: 0x2e8b57,
+            roughness: 0.25,
+            transmission: 0.45,
+            clearcoat: 0.9,
+            clearcoatRoughness: 0.1,
+            emissive: 0x0a3310,
+            emissiveIntensity: 0.2,
             side: THREE.DoubleSide
         });
 
-        const petalCount = 6;
-        for (let i = 0; i < petalCount; i++) {
-            const pivot = new THREE.Group();
-            const angle = (i / petalCount) * Math.PI * 2;
-            pivot.position.set(Math.cos(angle) * 0.12, 0, Math.sin(angle) * 0.12);
-            pivot.rotation.y = -angle;
+        const mesh = new THREE.Mesh(geom, mat);
+        group.add(mesh);
+        group.rotation.z = side > 0 ? 0.9 : -0.9;
+        group.rotation.x = 0.3;
+        return group;
+    }
 
-            const mesh = new THREE.Mesh(geom, mat);
-            mesh.position.y = 0.55;
-            pivot.add(mesh);
-            root.add(pivot);
+    buildSpecies(species) {
+        // Clear previous flower head elements
+        while (this.flowerHeadContainer.children.length > 0) {
+            this.flowerHeadContainer.remove(this.flowerHeadContainer.children[0]);
+        }
+        this.dewdropSprites = [];
+        this.petalNodes = [];
 
-            this.petalNodes.push({ pivot, basePitch: 0.1, bloomPitch: 1.1 });
+        const root = new THREE.Group();
+
+        // Material Config: Crystal Glass Physical Material
+        const petalMat = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            vertexColors: true,
+            transmission: 0.74,
+            opacity: 0.98,
+            transparent: true,
+            roughness: 0.16,
+            metalness: 0.04,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.08,
+            ior: 1.45,
+            thickness: 0.85,
+            specularIntensity: 1.0,
+            specularColor: new THREE.Color(0xffe8f2),
+            bumpMap: this.veinTexture,
+            bumpScale: 0.025,
+            side: THREE.DoubleSide
+        });
+
+        if (species === 'orchid') {
+            petalMat.emissive = new THREE.Color(0x1a0033);
+            petalMat.emissiveIntensity = 0.5;
         }
 
-        // Golden core
-        const core = new THREE.Mesh(
-            new THREE.SphereGeometry(0.18, 16, 16),
-            new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0xff8800, emissiveIntensity: 0.4 })
+        // Inner core light tint
+        const coreTints = {
+            rose: 0xff1464,
+            lotus: 0xff66aa,
+            tulip: 0xff3355,
+            sakura: 0xffa0be,
+            orchid: 0x00f0ff
+        };
+        this.innerGlowLight.color.setHex(coreTints[species] || 0xff1464);
+
+        if (species === 'rose') {
+            // =================================================================
+            // 45-PETAL CRYSTAL GLASS ROSE ACROSS 5 CONCENTRIC WHORLS
+            // Exact Fibonacci Phyllotaxis Parameters from Propose-Your-Crush
+            // =================================================================
+            const whorlConfigs = [
+                // Whorl 0 (outermost, 6 large sweeping petals)
+                { count: 6, w: 1.68, h: 3.4, cup: 0.36, curl: -0.76, scale: 1.18, angleOff: 1.62, y: -0.15, start: 0.0, end: 0.75, pMin: 0.16, pMax: 1.38, r: 0.38, rExp: 0.32 },
+                // Whorl 1 (14 mid-outer petals)
+                { count: 14, w: 1.42, h: 3.15, cup: 0.48, curl: -0.56, scale: 1.08, angleOff: 1.38, y: -0.06, start: 0.10, end: 0.85, pMin: 0.12, pMax: 1.16, r: 0.32, rExp: 0.25 },
+                // Whorl 2 (11 intermediate petals)
+                { count: 11, w: 1.22, h: 2.75, cup: 0.54, curl: -0.40, scale: 0.88, angleOff: 1.10, y: 0.04, start: 0.24, end: 0.92, pMin: 0.09, pMax: 0.92, r: 0.26, rExp: 0.18 },
+                // Whorl 3 (8 inner petals)
+                { count: 8, w: 0.98, h: 2.35, cup: 0.58, curl: -0.25, scale: 0.68, angleOff: 0.80, y: 0.14, start: 0.38, end: 0.97, pMin: 0.06, pMax: 0.68, r: 0.20, rExp: 0.12 },
+                // Whorl 4 (6 innermost bud petals)
+                { count: 6, w: 0.78, h: 1.95, cup: 0.62, curl: -0.14, scale: 0.48, angleOff: 0.52, y: 0.22, start: 0.50, end: 1.00, pMin: 0.03, pMax: 0.42, r: 0.14, rExp: 0.06 }
+            ];
+
+            whorlConfigs.forEach((cfg, wIdx) => {
+                const geom = this.createCurvedPetalGeometry(cfg.w, cfg.h, cfg.cup, cfg.curl, 'rose');
+                for (let i = 0; i < cfg.count; i++) {
+                    const pivot = new THREE.Group();
+                    const angle = (i / cfg.count) * Math.PI * 2 + cfg.angleOff;
+                    const r = cfg.r;
+
+                    pivot.position.set(Math.cos(angle) * r, cfg.y, Math.sin(angle) * r);
+                    pivot.rotation.y = -angle + Math.PI * 0.5;
+                    pivot.rotation.z = (Math.random() - 0.5) * 0.08;
+
+                    const mesh = new THREE.Mesh(geom, petalMat);
+                    mesh.scale.set(cfg.scale, cfg.scale, cfg.scale);
+                    pivot.add(mesh);
+                    root.add(pivot);
+
+                    this.petalNodes.push({
+                        pivot,
+                        angle,
+                        baseY: cfg.y,
+                        baseRadius: cfg.r,
+                        radiusExpand: cfg.rExp,
+                        startStage: cfg.start,
+                        endStage: cfg.end,
+                        pitchMin: cfg.pMin,
+                        pitchMax: cfg.pMax
+                    });
+
+                    // Add sparkling dewdrop sprite on outer whorl tips
+                    if (wIdx === 0 || (wIdx === 1 && i % 2 === 0)) {
+                        const spriteMat = new THREE.SpriteMaterial({
+                            map: this.starTexture,
+                            color: 0xffffff,
+                            transparent: true,
+                            blending: THREE.AdditiveBlending,
+                            depthWrite: false
+                        });
+                        const sprite = new THREE.Sprite(spriteMat);
+                        sprite.scale.set(0.35, 0.35, 1.0);
+                        sprite.position.set(0, cfg.h * cfg.scale * 0.96, 0.05);
+                        pivot.add(sprite);
+                        this.dewdropSprites.push({ sprite, phase: Math.random() * Math.PI * 2 });
+                    }
+                }
+            });
+
+        } else if (species === 'lotus') {
+            // Sacred Multi-Tier Lotus Mandala (28 petals, 4 whorls)
+            const whorlConfigs = [
+                { count: 10, w: 1.4, h: 3.2, cup: 0.3, curl: 0.15, scale: 1.1, angleOff: 0.0, y: -0.1, start: 0.0, end: 0.8, pMin: 0.18, pMax: 1.45, r: 0.35, rExp: 0.35 },
+                { count: 8, w: 1.2, h: 2.8, cup: 0.38, curl: 0.10, scale: 0.95, angleOff: 0.35, y: 0.0, start: 0.15, end: 0.88, pMin: 0.12, pMax: 1.15, r: 0.28, rExp: 0.25 },
+                { count: 6, w: 1.0, h: 2.4, cup: 0.44, curl: 0.05, scale: 0.78, angleOff: 0.7, y: 0.08, start: 0.30, end: 0.94, pMin: 0.08, pMax: 0.85, r: 0.20, rExp: 0.18 },
+                { count: 4, w: 0.8, h: 2.0, cup: 0.50, curl: 0.0, scale: 0.58, angleOff: 1.1, y: 0.15, start: 0.45, end: 1.0, pMin: 0.04, pMax: 0.55, r: 0.12, rExp: 0.10 }
+            ];
+
+            whorlConfigs.forEach(cfg => {
+                const geom = this.createCurvedPetalGeometry(cfg.w, cfg.h, cfg.cup, cfg.curl, 'lotus');
+                for (let i = 0; i < cfg.count; i++) {
+                    const pivot = new THREE.Group();
+                    const angle = (i / cfg.count) * Math.PI * 2 + cfg.angleOff;
+                    pivot.position.set(Math.cos(angle) * cfg.r, cfg.y, Math.sin(angle) * cfg.r);
+                    pivot.rotation.y = -angle + Math.PI * 0.5;
+                    const mesh = new THREE.Mesh(geom, petalMat);
+                    mesh.scale.set(cfg.scale, cfg.scale, cfg.scale);
+                    pivot.add(mesh);
+                    root.add(pivot);
+                    this.petalNodes.push({
+                        pivot, angle, baseY: cfg.y, baseRadius: cfg.r, radiusExpand: cfg.rExp,
+                        startStage: cfg.start, endStage: cfg.end, pitchMin: cfg.pMin, pitchMax: cfg.pMax
+                    });
+                }
+            });
+
+        } else if (species === 'tulip') {
+            // Royal 6-Petal Cup Tulip (3 inner, 3 outer)
+            const whorlConfigs = [
+                { count: 3, w: 1.8, h: 3.6, cup: 0.82, curl: -0.3, scale: 1.15, angleOff: 0.0, y: -0.05, start: 0.0, end: 0.82, pMin: 0.12, pMax: 0.95, r: 0.28, rExp: 0.28 },
+                { count: 3, w: 1.7, h: 3.5, cup: 0.88, curl: -0.2, scale: 1.05, angleOff: Math.PI / 3, y: 0.04, start: 0.18, end: 1.0, pMin: 0.08, pMax: 0.82, r: 0.22, rExp: 0.22 }
+            ];
+            whorlConfigs.forEach(cfg => {
+                const geom = this.createCurvedPetalGeometry(cfg.w, cfg.h, cfg.cup, cfg.curl, 'tulip');
+                for (let i = 0; i < cfg.count; i++) {
+                    const pivot = new THREE.Group();
+                    const angle = (i / cfg.count) * Math.PI * 2 + cfg.angleOff;
+                    pivot.position.set(Math.cos(angle) * cfg.r, cfg.y, Math.sin(angle) * cfg.r);
+                    pivot.rotation.y = -angle + Math.PI * 0.5;
+                    const mesh = new THREE.Mesh(geom, petalMat);
+                    mesh.scale.set(cfg.scale, cfg.scale, cfg.scale);
+                    pivot.add(mesh);
+                    root.add(pivot);
+                    this.petalNodes.push({
+                        pivot, angle, baseY: cfg.y, baseRadius: cfg.r, radiusExpand: cfg.rExp,
+                        startStage: cfg.start, endStage: cfg.end, pitchMin: cfg.pMin, pitchMax: cfg.pMax
+                    });
+                }
+            });
+
+        } else if (species === 'sakura') {
+            // 15 Fluttering Sakura Blossom Petals
+            const whorlConfigs = [
+                { count: 5, w: 1.3, h: 2.5, cup: 0.24, curl: -0.35, scale: 1.15, angleOff: 0.0, y: -0.05, start: 0.0, end: 0.8, pMin: 0.18, pMax: 1.35, r: 0.30, rExp: 0.32 },
+                { count: 5, w: 1.15, h: 2.3, cup: 0.28, curl: -0.25, scale: 0.95, angleOff: 0.62, y: 0.02, start: 0.15, end: 0.9, pMin: 0.12, pMax: 1.10, r: 0.24, rExp: 0.22 },
+                { count: 5, w: 0.95, h: 2.0, cup: 0.32, curl: -0.15, scale: 0.75, angleOff: 1.25, y: 0.08, start: 0.30, end: 1.0, pMin: 0.08, pMax: 0.85, r: 0.16, rExp: 0.14 }
+            ];
+            whorlConfigs.forEach(cfg => {
+                const geom = this.createCurvedPetalGeometry(cfg.w, cfg.h, cfg.cup, cfg.curl, 'sakura');
+                for (let i = 0; i < cfg.count; i++) {
+                    const pivot = new THREE.Group();
+                    const angle = (i / cfg.count) * Math.PI * 2 + cfg.angleOff;
+                    pivot.position.set(Math.cos(angle) * cfg.r, cfg.y, Math.sin(angle) * cfg.r);
+                    pivot.rotation.y = -angle + Math.PI * 0.5;
+                    const mesh = new THREE.Mesh(geom, petalMat);
+                    mesh.scale.set(cfg.scale, cfg.scale, cfg.scale);
+                    pivot.add(mesh);
+                    root.add(pivot);
+                    this.petalNodes.push({
+                        pivot, angle, baseY: cfg.y, baseRadius: cfg.r, radiusExpand: cfg.rExp,
+                        startStage: cfg.start, endStage: cfg.end, pitchMin: cfg.pMin, pitchMax: cfg.pMax
+                    });
+                }
+            });
+
+        } else {
+            // Cosmic Bioluminescent Orchid (24 petals across 3 whorls)
+            const whorlConfigs = [
+                { count: 8, w: 1.4, h: 3.2, cup: 0.40, curl: -0.65, scale: 1.18, angleOff: 0.0, y: -0.1, start: 0.0, end: 0.78, pMin: 0.18, pMax: 1.40, r: 0.35, rExp: 0.32 },
+                { count: 8, w: 1.2, h: 2.8, cup: 0.46, curl: -0.45, scale: 0.95, angleOff: 0.38, y: 0.0, start: 0.15, end: 0.88, pMin: 0.12, pMax: 1.15, r: 0.28, rExp: 0.22 },
+                { count: 8, w: 1.0, h: 2.4, cup: 0.52, curl: -0.25, scale: 0.72, angleOff: 0.76, y: 0.08, start: 0.32, end: 1.0, pMin: 0.08, pMax: 0.82, r: 0.18, rExp: 0.14 }
+            ];
+            whorlConfigs.forEach(cfg => {
+                const geom = this.createCurvedPetalGeometry(cfg.w, cfg.h, cfg.cup, cfg.curl, 'orchid');
+                for (let i = 0; i < cfg.count; i++) {
+                    const pivot = new THREE.Group();
+                    const angle = (i / cfg.count) * Math.PI * 2 + cfg.angleOff;
+                    pivot.position.set(Math.cos(angle) * cfg.r, cfg.y, Math.sin(angle) * cfg.r);
+                    pivot.rotation.y = -angle + Math.PI * 0.5;
+                    const mesh = new THREE.Mesh(geom, petalMat);
+                    mesh.scale.set(cfg.scale, cfg.scale, cfg.scale);
+                    pivot.add(mesh);
+                    root.add(pivot);
+                    this.petalNodes.push({
+                        pivot, angle, baseY: cfg.y, baseRadius: cfg.r, radiusExpand: cfg.rExp,
+                        startStage: cfg.start, endStage: cfg.end, pitchMin: cfg.pMin, pitchMax: cfg.pMax
+                    });
+                }
+            });
+        }
+
+        // Green Sepals (Calyx beneath flower head)
+        const sepalGeom = this.createCurvedPetalGeometry(0.55, 1.4, 0.18, 0.45, 'sakura');
+        const sepalMat = new THREE.MeshPhysicalMaterial({
+            color: 0x2e8b57,
+            transmission: 0.35,
+            roughness: 0.3,
+            clearcoat: 0.7,
+            side: THREE.DoubleSide
+        });
+        const sepalCount = 5;
+        for (let i = 0; i < sepalCount; i++) {
+            const angle = (i / sepalCount) * Math.PI * 2 + 0.3;
+            const pivot = new THREE.Group();
+            pivot.position.set(Math.cos(angle) * 0.28, -0.22, Math.sin(angle) * 0.28);
+            pivot.rotation.y = -angle + Math.PI * 0.5;
+            pivot.rotation.x = 1.45; // Curved downward cradling head
+            const mesh = new THREE.Mesh(sepalGeom, sepalMat);
+            mesh.scale.set(0.7, 0.7, 0.7);
+            pivot.add(mesh);
+            root.add(pivot);
+        }
+
+        // Golden Floral Core & 18 Radiant Stamens
+        const coreGroup = new THREE.Group();
+        const carpel = new THREE.Mesh(
+            new THREE.SphereGeometry(0.24, 18, 18),
+            new THREE.MeshPhysicalMaterial({
+                color: 0xffbb22,
+                emissive: 0xff9900,
+                emissiveIntensity: 0.4,
+                roughness: 0.2,
+                clearcoat: 1.0
+            })
         );
-        core.position.y = 0.12;
-        root.add(core);
+        carpel.position.y = 0.16;
+        coreGroup.add(carpel);
+
+        const stamenMat = new THREE.MeshStandardMaterial({
+            color: 0xffd700,
+            emissive: 0xffaa00,
+            emissiveIntensity: 0.5,
+            roughness: 0.3
+        });
+        const stamenCount = 18;
+        const filamentGeom = new THREE.CylinderGeometry(0.012, 0.014, 0.42, 6);
+        filamentGeom.translate(0, 0.21, 0);
+        const antherGeom = new THREE.SphereGeometry(0.038, 8, 8);
+
+        for (let i = 0; i < stamenCount; i++) {
+            const sAngle = (i / stamenCount) * Math.PI * 2;
+            const sGroup = new THREE.Group();
+            sGroup.position.set(Math.cos(sAngle) * 0.14, 0.16, Math.sin(sAngle) * 0.14);
+            sGroup.rotation.y = -sAngle;
+            sGroup.rotation.x = 0.35 + (i % 3) * 0.08;
+
+            const filament = new THREE.Mesh(filamentGeom, stamenMat);
+            const anther = new THREE.Mesh(antherGeom, stamenMat);
+            anther.position.y = 0.42;
+            sGroup.add(filament);
+            sGroup.add(anther);
+            coreGroup.add(sGroup);
+        }
+        root.add(coreGroup);
 
         this.flowerHead = root;
         this.flowerHeadContainer.add(root);
@@ -674,11 +1119,12 @@ class Studio3DRenderer {
         this.renderer.setSize(w, h);
     }
 
-    render(bloom, growth, totalWind, time) {
+    render(bloom, growth, totalWind, time, handTilt = null) {
         const totalHeight = 3.6 * growth;
         const pts = this.stemPoints;
         const count = pts.length;
 
+        // Dynamic wind bend along stem points
         for (let i = 0; i < count; i++) {
             const t = i / (count - 1);
             const y = this.stemBaseY + t * totalHeight;
@@ -689,18 +1135,62 @@ class Studio3DRenderer {
 
         this.stemCurve.points = pts;
         this.stemMesh.geometry.dispose();
-        this.stemMesh.geometry = new THREE.TubeGeometry(this.stemCurve, 36, 0.065 * Math.max(0.4, growth), 10, false);
+        this.stemMesh.geometry = new THREE.TubeGeometry(
+            this.stemCurve, 36, 0.068 * Math.max(0.4, growth), 12, false
+        );
 
+        // Position stem leaves along tube
+        if (this.leafGroup1 && this.leafGroup2) {
+            const p1 = pts[Math.floor(count * 0.35)];
+            const p2 = pts[Math.floor(count * 0.65)];
+            this.leafGroup1.position.copy(p1);
+            this.leafGroup2.position.copy(p2);
+            const leafScale = Math.min(1.0, growth * 1.1);
+            this.leafGroup1.scale.set(leafScale, leafScale, leafScale);
+            this.leafGroup2.scale.set(leafScale, leafScale, leafScale);
+            this.leafGroup1.rotation.y = totalWind * 0.6;
+            this.leafGroup2.rotation.y = -totalWind * 0.6;
+        }
+
+        // Flower head attaches to stem apex
         const tip = pts[count - 1];
         this.flowerHeadContainer.position.copy(tip);
-        this.coreLight.position.set(tip.x, tip.y + 0.15, tip.z);
-        this.coreLight.intensity = (0.5 + bloom * 2.8) * growth;
 
-        const scale = (1.0 + bloom * 0.3) * growth * 1.2;
+        // Hand Tilt / Orientation Mapping: allows user to tilt hand to inspect flower
+        if (handTilt) {
+            this.flowerHeadContainer.rotation.x = handTilt.pitch * 0.55;
+            this.flowerHeadContainer.rotation.y = handTilt.yaw * 0.65 + time * 0.08;
+            this.flowerHeadContainer.rotation.z = handTilt.roll * 0.5 + totalWind * 0.35;
+        } else {
+            this.flowerHeadContainer.rotation.z = totalWind * 0.45;
+            this.flowerHeadContainer.rotation.y = time * 0.1;
+            this.flowerHeadContainer.rotation.x = 0.05;
+        }
+
+        this.innerGlowLight.position.set(tip.x, tip.y + 0.2, tip.z);
+        this.innerGlowLight.intensity = (0.6 + bloom * 3.2) * Math.min(1.2, growth);
+
+        const scale = (0.95 + bloom * 0.28) * growth * 1.15;
         this.flowerHead.scale.set(scale, scale, scale);
 
+        // Staggered Phyllotaxis Unfurling Physics
         this.petalNodes.forEach(node => {
-            node.pivot.rotation.x = node.basePitch + bloom * node.bloomPitch;
+            const local = Math.max(0, Math.min(1, (bloom - node.startStage) / (node.endStage - node.startStage)));
+            // Smooth cubic ease-out
+            const p = 1.0 - Math.pow(1.0 - local, 3.0);
+            node.pivot.rotation.x = node.pitchMin + p * (node.pitchMax - node.pitchMin);
+
+            // Subtle radial expansion as whorl blooms outward
+            const r = node.baseRadius + p * node.radiusExpand;
+            node.pivot.position.x = Math.cos(node.angle) * r;
+            node.pivot.position.z = Math.sin(node.angle) * r;
+        });
+
+        // Twinkle dewdrop sparkle sprites
+        this.dewdropSprites.forEach(d => {
+            const tw = 0.28 + 0.18 * Math.sin(time * 3.5 + d.phase);
+            d.sprite.scale.set(tw, tw, 1.0);
+            d.sprite.material.opacity = Math.max(0.15, Math.min(1.0, bloom * (0.6 + 0.4 * Math.sin(time * 4.0 + d.phase))));
         });
 
         this.renderer.render(this.scene, this.camera);
@@ -739,7 +1229,7 @@ class FlowerBloomApp {
 
         // State
         this.renderMode = 'reel'; // 'reel' (exact Instagram 2D) or '3d'
-        this.currentSpecies = 'tulip';
+        this.currentSpecies = 'rose';
         this.isManualMode = false;
         this.autoBreathe = false;
 
@@ -749,6 +1239,7 @@ class FlowerBloomApp {
         this.targetBloom = 0.65;
         this.targetGrowth = 0.85;
         this.targetWindForce = 0.0;
+        this.handTilt = { pitch: 0, yaw: 0, roll: 0 };
 
         this.lastHandX = 0.5;
         this.time = 0;
@@ -774,27 +1265,8 @@ class FlowerBloomApp {
         this.recordCtx = this.recordCanvas.getContext('2d');
         this.recordedBlob = null;
 
-        // Cloud Storage Config (Option C - Cloudinary)
-        this.cloudName = localStorage.getItem('fb_cloud_name') || 'ib67jqy4';
-        this.uploadPreset = localStorage.getItem('fb_upload_preset') || 'flower bloom preset';
-
-        // Modal Elements
-        this.videoModal = document.getElementById('video-modal');
-        this.previewVideo = document.getElementById('preview-video');
-        this.btnSendCloud = document.getElementById('btn-send-cloud');
-        this.btnSaveDisk = document.getElementById('btn-save-disk');
-        this.btnCloseVideoModal = document.getElementById('btn-close-video-modal');
-        this.cloudStatusBox = document.getElementById('cloud-status-box');
-        this.cloudSpinner = document.getElementById('cloud-spinner');
-        this.cloudStatusText = document.getElementById('cloud-status-text');
-        this.cloudClipLink = document.getElementById('cloud-clip-link');
-
-        this.cloudSettingsModal = document.getElementById('cloud-settings-modal');
-        this.btnCloudConfig = document.getElementById('btn-cloud-config');
-        this.btnCloseCloudModal = document.getElementById('btn-close-cloud-modal');
-        this.btnSaveCloudSettings = document.getElementById('btn-save-cloud-settings');
-        this.cfgCloudName = document.getElementById('cfg-cloud-name');
-        this.cfgUploadPreset = document.getElementById('cfg-upload-preset');
+        // Notification Toast
+        this.saveToast = document.getElementById('save-toast');
 
         // Init
         this.resize();
@@ -938,43 +1410,6 @@ class FlowerBloomApp {
             this.isManualMode = true;
             this.manualPanel.classList.remove('hidden');
         });
-
-        // Cloud Settings Modal Toggle & Save
-        this.btnCloudConfig?.addEventListener('click', () => {
-            if (this.cfgCloudName) this.cfgCloudName.value = this.cloudName;
-            if (this.cfgUploadPreset) this.cfgUploadPreset.value = this.uploadPreset;
-            this.cloudSettingsModal?.classList.remove('hidden');
-        });
-        this.btnCloseCloudModal?.addEventListener('click', () => {
-            this.cloudSettingsModal?.classList.add('hidden');
-        });
-        this.btnSaveCloudSettings?.addEventListener('click', () => {
-            this.cloudName = (this.cfgCloudName?.value || '').trim();
-            this.uploadPreset = (this.cfgUploadPreset?.value || '').trim();
-            localStorage.setItem('fb_cloud_name', this.cloudName);
-            localStorage.setItem('fb_upload_preset', this.uploadPreset);
-            this.cloudSettingsModal?.classList.add('hidden');
-            this.audio.playChime(6, 0.6);
-            alert('Cloudinary settings saved! Clips will now upload to your cloud.');
-        });
-
-        // Video Preview Modal Event Listeners
-        this.btnCloseVideoModal?.addEventListener('click', () => {
-            this.videoModal?.classList.add('hidden');
-            if (this.previewVideo) this.previewVideo.pause();
-        });
-        this.btnSaveDisk?.addEventListener('click', () => {
-            if (!this.recordedBlob) return;
-            const url = URL.createObjectURL(this.recordedBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `flower-bloom-${this.currentSpecies}-reaction.webm`;
-            a.click();
-            this.audio.playChime(7, 0.6);
-        });
-        this.btnSendCloud?.addEventListener('click', () => {
-            this.uploadToCloudinary();
-        });
     }
 
     // -------------------------------------------------------------------------
@@ -1048,6 +1483,11 @@ class FlowerBloomApp {
             this.trackingStatus.textContent = 'Searching Hands...';
             this.trackingStatus.classList.remove('ready');
             this.targetWindForce *= 0.88;
+            if (this.handTilt) {
+                this.handTilt.pitch *= 0.92;
+                this.handTilt.roll *= 0.92;
+                this.handTilt.yaw *= 0.92;
+            }
             return;
         }
 
@@ -1096,6 +1536,22 @@ class FlowerBloomApp {
             this.targetWindForce = dx * 16.0;
             this.lastHandX = hand[0].x;
         }
+
+        // 3D Hand Tilt & Orientation (pitch, yaw, roll from hand skeleton)
+        const leadHand = sortedHands[0].lm;
+        const wrist = leadHand[0];
+        const midMcp = leadHand[9];
+        const idxMcp = leadHand[5];
+        const pinkyMcp = leadHand[17];
+
+        const pitch = (wrist.y - midMcp.y) - 0.22;
+        const roll = (pinkyMcp.y - idxMcp.y) * 2.0;
+        const yaw = (wrist.x - midMcp.x) * 2.2;
+
+        if (!this.handTilt) this.handTilt = { pitch: 0, yaw: 0, roll: 0 };
+        this.handTilt.pitch += (pitch - this.handTilt.pitch) * 0.12;
+        this.handTilt.roll += (roll - this.handTilt.roll) * 0.12;
+        this.handTilt.yaw += (yaw - this.handTilt.yaw) * 0.12;
     }
 
     calcNormalizedPinch(lm) {
@@ -1279,14 +1735,26 @@ class FlowerBloomApp {
             this.recordingBadge.classList.add('hidden');
             const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
             this.recordedBlob = blob;
+
+            // Automatically download clean reaction clip to user's device
             const url = URL.createObjectURL(blob);
-            if (this.previewVideo) {
-                this.previewVideo.src = url;
-                this.previewVideo.play().catch(() => {});
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `flower-bloom-${this.currentSpecies}-reaction.webm`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 500);
+
+            // Display sleek on-screen toast notice
+            if (this.saveToast) {
+                this.saveToast.classList.remove('hidden');
+                setTimeout(() => {
+                    this.saveToast.classList.add('hidden');
+                }, 4000);
             }
-            if (this.cloudStatusBox) this.cloudStatusBox.classList.add('hidden');
-            if (this.cloudClipLink) this.cloudClipLink.classList.add('hidden');
-            if (this.videoModal) this.videoModal.classList.remove('hidden');
             this.audio.playChime(7, 0.7);
         };
 
@@ -1305,52 +1773,6 @@ class FlowerBloomApp {
                 }
             }
         }, 1000);
-    }
-
-    async uploadToCloudinary() {
-        if (!this.recordedBlob) return;
-
-        if (!this.cloudName || !this.uploadPreset) {
-            alert('Please configure your Cloudinary Cloud Name and Upload Preset in Cloud Settings (☁️ icon) first!');
-            this.cloudSettingsModal?.classList.remove('hidden');
-            return;
-        }
-
-        this.cloudStatusBox?.classList.remove('hidden');
-        this.cloudSpinner?.classList.remove('hidden');
-        this.cloudClipLink?.classList.add('hidden');
-        this.cloudStatusText.textContent = `Uploading reaction clip to Bhuwan's cloud... 🌸✨`;
-
-        try {
-            const formData = new FormData();
-            formData.append('file', this.recordedBlob, `flower-bloom-${this.currentSpecies}-${Date.now()}.webm`);
-            formData.append('upload_preset', this.uploadPreset);
-
-            const res = await fetch(`https://api.cloudinary.com/v1_1/${this.cloudName}/video/upload`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error?.message || `Server responded with ${res.status}`);
-            }
-
-            const data = await res.json();
-            this.cloudSpinner?.classList.add('hidden');
-            this.cloudStatusText.textContent = '🎉 Sent! Bhuwan will receive your blooming flower clip! 💖';
-
-            if (data.secure_url && this.cloudClipLink) {
-                this.cloudClipLink.href = data.secure_url;
-                this.cloudClipLink.textContent = 'Open Cloud Video Link ↗';
-                this.cloudClipLink.classList.remove('hidden');
-            }
-            this.audio.playChime(8, 0.8);
-        } catch (err) {
-            console.error('Upload failed:', err);
-            this.cloudSpinner?.classList.add('hidden');
-            this.cloudStatusText.textContent = `Upload issue: ${err.message}. You can still click 'Save to My Device'!`;
-        }
     }
 
     captureSnapshot() {
@@ -1422,7 +1844,7 @@ class FlowerBloomApp {
         if (this.renderMode === 'reel') {
             this.reelRenderer.render(this.bloom, this.growth, totalWind, this.time, dt, this.currentSpecies);
         } else {
-            this.studio3D.render(this.bloom, this.growth, totalWind, this.time);
+            this.studio3D.render(this.bloom, this.growth, totalWind, this.time, this.handTilt);
         }
 
         // Draw HUD Calipers
